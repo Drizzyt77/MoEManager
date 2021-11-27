@@ -1,6 +1,7 @@
 import configparser
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -92,11 +93,14 @@ def get_saved_location():
 
 
 def update_config(section, key, value, file):
+    print(section, key, value, file)
     if file is None:
         return
-    file = file + file_addition
+    # file = file + file_addition
+    print(file)
     config = get_ini(file)
     if not os.path.exists(file):
+        print("Path Error")
         return
     if key is None:
         try:
@@ -149,6 +153,9 @@ def main():
         [
             sg.Text("Server Status:"),
             sg.Text("Offline", key="-STATUS-")
+        ],
+        [
+            sg.HSeperator()
         ],
         [
             sg.Button("Start Server", key='-START_SERVER-'),
@@ -208,34 +215,24 @@ def main():
     cur_selection = None
     cur_key = None
     folder = None
+    data = get_config()
+    try:
+        install_location = data['install']
+    except KeyError:
+        install_location = os.curdir
+    folder = install_location
+    shutil.copy(install_location + file_addition, "./tmpcfg.ini")
     while True:
         event, values = window.read(timeout=1000, timeout_key='-REFRESH-')
         data = get_config()
-        print(event)
         if not data:
             pass
         else:
-            if data['install'] != '':
-                folder = data['install']
-                try:
-                    file_list = os.listdir(folder + file_addition[:-20])
-                except:
-                    file_list = []
-                filename = None
-                for f in file_list:
-                    if os.path.isfile(
-                            os.path.join(
-                                folder + file_addition[:-20], f)) \
-                            and f.lower() == 'gameusersettings.ini':
-                        filename = f
-                if filename is None:
-                    pass
-                else:
-                    config = get_ini(folder + file_addition)
-                    try:
-                        window["-OPTIONS-"].update(config.keys())
-                    except (IndexError, KeyError):
-                        pass
+            config = get_ini("tmpcfg.ini")
+            try:
+                window["-OPTIONS-"].update(config.keys())
+            except (IndexError, KeyError):
+                pass
         if event == "-FOLDER-":
             with open('appcfg.json', 'w') as f:
                 data['install'] = values['-FOLDER-']
@@ -264,20 +261,7 @@ def main():
         elif event == "-OPTIONS-":
             if values["-OPTIONS-"]:
                 folder = values["-FOLDER-"]
-                try:
-                    # Get list of files in folder
-                    file_list = os.listdir(folder + file_addition[:-20])
-                except:
-                    file_list = []
-
-                filename = None
-                for f in file_list:
-                    if os.path.isfile(
-                            os.path.join(
-                                folder + file_addition[:-20], f)) \
-                            and f.lower() == 'GameUserSettings.ini':
-                        filename = f
-                config = get_ini(folder + file_addition)
+                config = get_ini("tmpcfg.ini")
                 try:
                     cur_selection = str(values['-OPTIONS-'][0])
                 except (IndexError, KeyError):
@@ -306,7 +290,7 @@ def main():
                                 folder + file_addition[:-20], f)) \
                             and f.lower() == 'GameUserSettings.ini':
                         filename = f
-                config = get_ini(folder + file_addition)
+                config = get_ini("tmpcfg.ini")
                 try:
                     cur_key = values['-VALUES-'][0]
                 except (IndexError, KeyError):
@@ -319,15 +303,15 @@ def main():
         elif event == '-SAVE-':
             if cur_key is not None:
                 if values["-EDITS-"] != '':
-                    update_config(cur_selection, cur_key, values["-EDITS-"], folder)
+                    update_config(cur_selection, cur_key, values["-EDITS-"], "tmpcfg.ini")
                     sg.popup_quick_message('Setting Saved!', background_color='green',
                                            text_color='white', keep_on_top=True, auto_close_duration=1)
         elif event == '-ADD_SECTION_BUTTON-':
             if values['-ADD_SECTION-'] != '':
                 if folder is None:
                     continue
-                update_config(values['-ADD_SECTION-'], None, '', folder)
-                config = get_ini(folder + file_addition)
+                update_config(values['-ADD_SECTION-'], None, '', "tmpcfg.ini")
+                config = get_ini("tmpcfg.ini")
                 window['-OPTIONS-'].update(config.keys())
                 window['-EDITS-'].update('')
                 window['-VALUES-'].update('')
@@ -336,8 +320,8 @@ def main():
             if values['-ADD_KEY-'] != '':
                 if folder is None:
                     continue
-                update_config(cur_selection, values['-ADD_KEY-'], '', folder)
-                config = get_ini(folder + file_addition)
+                update_config(cur_selection, values['-ADD_KEY-'], '', "tmpcfg.ini")
+                config = get_ini("tmpcfg.ini")
                 window['-VALUES-'].update(config[cur_selection])
                 window['-EDITS-'].update('')
                 window['-ADD_KEY-'].update('')
@@ -345,11 +329,10 @@ def main():
             if cur_selection is not None:
                 if folder is None:
                     continue
-                config = get_ini(folder + file_addition)
+                config = get_ini("tmpcfg.ini")
                 config.remove_section(cur_selection)
-                with open(folder + file_addition, 'w') as f:
+                with open("tmpcfg.ini", 'w') as f:
                     config.write(f)
-                config = get_ini(folder + file_addition)
                 window['-OPTIONS-'].update(config.keys())
                 window['-EDITS-'].update('')
                 window['-VALUES-'].update('')
@@ -359,31 +342,32 @@ def main():
             if cur_key is not None:
                 if folder is None:
                     continue
-                config = get_ini(folder + file_addition)
+                config = get_ini("tmpcfg.ini")
                 config.remove_option(cur_selection, cur_key)
-                with open(folder + file_addition, 'w') as f:
+                with open("tmpcfg.ini", 'w') as f:
                     config.write(f)
-                config = get_ini(folder + file_addition)
                 window['-VALUES-'].update(config[cur_selection])
                 window['-EDITS-'].update('')
                 window['-ADD_KEY-'].update('')
         elif event == '-START_SERVER-':
+            with open(folder + file_addition, "w") as f:
+                config = configparser.ConfigParser()
+                config.read("tmpcfg.ini")
+                config.write(f)
+
             subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Start'])
         elif event == '-REBOOT_SERVER-':
             subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Reboot'])
         elif event == '-SHUTDOWN_SERVER-':
             subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Shutdown'])
         elif event == '-REFRESH-':
-            print("Server Status: ", server_status)
-            print("Checked")
             if server_status == "":
-                window['-STATUS-'].update('Offline')
+                window['-STATUS-'].update('Offline ❌')
             else:
-                window['-STATUS-'].update('Online')
+                window['-STATUS-'].update('Online ✅')
             window.refresh()
             continue
         elif event is None:
-            print("Window Closed")
             window.close()
             sys.exit()
 
