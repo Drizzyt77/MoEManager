@@ -1,10 +1,11 @@
-import base64
 import configparser
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
+import psutil
 
 from rcon import Client
 from steam.client import SteamClient
@@ -12,6 +13,25 @@ from steam.client import SteamClient
 import PySimpleGUIQt as sg
 
 file_addition = r'/WindowsPrivateServer/MOE/Saved/Config/WindowsServer/GameUserSettings.ini'
+
+server_status = ""
+
+
+class Status(object):
+    def __init__(self, interval=30):
+        self.interval = interval
+        thread = threading.Thread(target=self.check_server_status, args=())
+        thread.daemon = True
+        thread.start()
+
+    def check_server_status(self):
+        global server_status
+        while True:
+            if "MOEServer.exe" in (p.name() for p in psutil.process_iter()):
+                server_status = 'Online'
+            else:
+                server_status = ''
+            time.sleep(self.interval)
 
 
 class Update(object):
@@ -37,7 +57,7 @@ class Update(object):
                 with open("appcfg.json", "w") as f:
                     data["buildid"] = str(x)
                     json.dump(data, f, indent=2)
-            time.sleep(60*self.interval)
+            time.sleep(60 * self.interval)
 
 
 def get_ini(file: str):
@@ -114,11 +134,26 @@ def refresh_players():
 
 
 def main():
+    global server_status
+    # TODO UNCOMMENT THIS
     test = Update()
+    test2 = Status()
     install = [
         [
             sg.In(default_text=get_saved_location(), size=(25, 1), enable_events=True, key="-FOLDER-", disabled=True),
             sg.FolderBrowse(initial_folder=get_saved_location())
+        ],
+        [
+            sg.HSeperator()
+        ],
+        [
+            sg.Text("Server Status:"),
+            sg.Text("Offline", key="-STATUS-")
+        ],
+        [
+            sg.Button("Start Server", key='-START_SERVER-'),
+            sg.Button("Reboot Sever", key='-REBOOT_SERVER-'),
+            sg.Button("Shutdown Server", key='-SHUTDOWN_SERVER-')
         ]
     ]
     options = [
@@ -176,33 +211,31 @@ def main():
     while True:
         event, values = window.read(timeout=1000, timeout_key='-REFRESH-')
         data = get_config()
-        if event is None:
-            continue
+        print(event)
+        if not data:
+            pass
         else:
-            if not data:
-                pass
-            else:
-                if data['install'] != '':
-                    folder = data['install']
+            if data['install'] != '':
+                folder = data['install']
+                try:
+                    file_list = os.listdir(folder + file_addition[:-20])
+                except:
+                    file_list = []
+                filename = None
+                for f in file_list:
+                    if os.path.isfile(
+                            os.path.join(
+                                folder + file_addition[:-20], f)) \
+                            and f.lower() == 'gameusersettings.ini':
+                        filename = f
+                if filename is None:
+                    pass
+                else:
+                    config = get_ini(folder + file_addition)
                     try:
-                        file_list = os.listdir(folder + file_addition[:-20])
-                    except:
-                        file_list = []
-                    filename = None
-                    for f in file_list:
-                        if os.path.isfile(
-                                os.path.join(
-                                    folder + file_addition[:-20], f)) \
-                                and f.lower() == 'gameusersettings.ini':
-                            filename = f
-                    if filename is None:
+                        window["-OPTIONS-"].update(config.keys())
+                    except (IndexError, KeyError):
                         pass
-                    else:
-                        config = get_ini(folder + file_addition)
-                        try:
-                            window["-OPTIONS-"].update(config.keys())
-                        except (IndexError, KeyError):
-                            pass
         if event == "-FOLDER-":
             with open('appcfg.json', 'w') as f:
                 data['install'] = values['-FOLDER-']
@@ -334,10 +367,25 @@ def main():
                 window['-VALUES-'].update(config[cur_selection])
                 window['-EDITS-'].update('')
                 window['-ADD_KEY-'].update('')
+        elif event == '-START_SERVER-':
+            subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Start'])
+        elif event == '-REBOOT_SERVER-':
+            subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Reboot'])
+        elif event == '-SHUTDOWN_SERVER-':
+            subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Shutdown'])
         elif event == '-REFRESH-':
+            print("Server Status: ", server_status)
+            print("Checked")
+            if server_status == "":
+                window['-STATUS-'].update('Offline')
+            else:
+                window['-STATUS-'].update('Online')
+            window.refresh()
             continue
-        elif event == "OK" or event == sg.WIN_CLOSED:
-            break
+        elif event is None:
+            print("Window Closed")
+            window.close()
+            sys.exit()
 
     window.close()
 

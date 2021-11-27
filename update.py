@@ -5,10 +5,6 @@ import urllib.request
 from time import sleep
 import PySimpleGUI as sg
 
-pbar = None
-downloaded = None
-size = None
-
 
 def check_update():
     column_to_be_centered = [[sg.Text('Checking for Updates...', k='-TEXT-')]]
@@ -29,18 +25,18 @@ def check_update():
     window['-TEXT-'].update(f"Current version {version} found")
     window.Refresh()
     sleep(.5)
-    response = requests.get("https://api.github.com/repos/Drizzyt77/workout/releases/latest")
+    response = requests.get("https://api.github.com/repos/Drizzyt77/MoEManager/releases/latest")
 
     latest_version = response.json()['name']
     window['-TEXT-'].update(f"Latest version {latest_version} found")
     window.Refresh()
     sleep(.5)
 
-    if float(version) < float(latest_version):
+    if str(version) != str(latest_version):
         window['-TEXT-'].update("Starting update...")
         window.Refresh()
-        url = f'https://github.com/Drizzyt77/workout/releases/download/{latest_version}/main.exe'
-        filename = 'Workout App.exe'
+        url = f'https://github.com/Drizzyt77/MoEManager/releases/download/{latest_version}/main.exe'
+        filename = 'MoE Manager.exe'
         urllib.request.urlretrieve(url, filename)
         data["version"] = latest_version
         with open("appcfg.json", "w") as f:
@@ -48,12 +44,12 @@ def check_update():
         window['-TEXT-'].update("Update completed!")
         window.Refresh()
         sleep(2)
-        subprocess.Popen(['Workout App.exe'])
+        subprocess.Popen(['MoE Manager.exe'])
     else:
         window['-TEXT-'].update("Up to date, running program!")
         window.Refresh()
         sleep(2)
-        subprocess.Popen(['Workout App.exe'])
+        subprocess.Popen(['MoE Manager.exe'])
 
 
 if __name__ == '__main__':
