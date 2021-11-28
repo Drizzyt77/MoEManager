@@ -44,6 +44,8 @@ def check_update():
         window['-TEXT-'].update("Update completed!")
         window.Refresh()
         sleep(2)
+        window['-TEXT-'].update("Launching MoE Manager...")
+        sleep(2)
         subprocess.Popen(['MoE Manager.exe'])
     else:
         window['-TEXT-'].update("Up to date, running program!")

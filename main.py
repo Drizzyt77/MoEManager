@@ -20,6 +20,8 @@ file_addition = r'/WindowsPrivateServer/MOE/Saved/Config/WindowsServer/GameUserS
 
 server_status = ""
 update_time = None
+latest_update = None
+last_backup = None
 
 
 class Status(object):
@@ -39,15 +41,48 @@ class Status(object):
             time.sleep(self.interval)
 
 
+class Backup(object):
+    def __init__(self):
+        data = get_config()
+        try:
+            backuptime = data['backuptime']
+        except KeyError:
+            backuptime = 60
+        try:
+            install_dir = data['install']
+        except KeyError:
+            return
+        self.interval = backuptime
+        self.install_dir = install_dir
+        thread = threading.Thread(target=self.do_backup, args=())
+        thread.daemon = True
+        thread.start()
+
+    def do_backup(self):
+        global last_backup
+        while True:
+            if os.path.exists(os.path.join(self.install_dir, '/WindowsPrivateServer/MOE/Saved/SaveGames/')):
+                num = len(os.listdir(self.install_dir + '/WindowsPrivateServer/MOE/Saved/SaveGames/'))
+                shutil.make_archive('MoEBackup-' + str(num) + '-'+str(datetime.now(pytz.timezone("America/Chicago"))),
+                                    'zip', os.path.join(self.install_dir, '/WindowsPrivateServer/MOE/Saved/SaveGames/'))
+            time.sleep(self.interval)
+
+
 class Update(object):
-    def __init__(self, interval=30):
-        self.interval = interval
+    def __init__(self):
+        data = get_config()
+        try:
+            updatetime = data['updatetime']
+        except KeyError:
+            updatetime = 60
+        self.interval = updatetime
         thread = threading.Thread(target=self.check_for_updates, args=())
         thread.daemon = True
         thread.start()
 
     def check_for_updates(self):
         global update_time
+        global latest_update
         while True:
             with open("appcfg.json", "r") as f:
                 data = json.loads(f.read())
@@ -71,6 +106,7 @@ class Update(object):
                 with open("appcfg.json", "w") as f:
                     data["buildid"] = str(x)
                     json.dump(data, f, indent=2)
+                latest_update = datetime.now(pytz.timezone("America/Chicago"))
             update_time = datetime.now(pytz.timezone("America/Chicago"))
             time.sleep(60 * self.interval)
 
@@ -151,12 +187,99 @@ def refresh_players():
     return response
 
 
+def get_update_refresh():
+    data = get_config()
+    try:
+        updatetime = data['updatetime']
+    except KeyError:
+        updatetime = 60
+    return updatetime
+
+
+def get_backup_refresh():
+    data = get_config()
+    try:
+        backuptime = data['backuptime']
+    except KeyError:
+        backuptime = 60
+    return backuptime
+
+
+def manager_settings_window():
+    slider = [
+        [
+            sg.Text(f"Check for Updates every {get_update_refresh()} minute(s)", key='-UPDATE_CHECK-')
+        ],
+        [
+            sg.Slider((1, 120), tooltip='How often to check for updates',
+                      orientation='horizontal', resolution=10, key='-SLIDER-',
+                      enable_events=True, default_value=get_update_refresh())
+        ]
+    ]
+    slider2 = [
+        [
+            sg.Text(f"Backup save every {get_backup_refresh()} minutes(s)", key='-BACKUP_CHECK-')
+        ],
+        [
+            sg.Slider((1, 120), tooltip='How often to backup your save',
+                      orientation='horizontal', resolution=10, key='-SLIDER2-',
+                      enable_events=True, default_value=get_backup_refresh())
+        ]
+    ]
+    layout = [
+        [
+            sg.Column(slider)
+        ],
+        [
+            sg.HSeperator()
+        ],
+        [
+            sg.Column(slider2)
+        ],
+        [
+            sg.HSeperator()
+        ],
+        [
+            sg.Button("Save", key='-SAVE-', enable_events=True),
+            sg.Button("Cancel", key='-CANCEL-', enable_events=True)
+        ]
+    ]
+    win = sg.Window("MoE Manager Settings", keep_on_top=True, layout=layout, icon='Images/moe.ico')
+    config = get_config()
+    while True:
+        event, values = win.read()
+        if event is None:
+            win.close()
+            break
+        elif event == '-SAVE-':
+            config['updatetime'] = values['-SLIDER-']
+            config['backuptime'] = values['-SLIDER2-']
+            with open('appcfg.json', 'w') as f:
+                json.dump(config, f, indent=2)
+            sg.popup_quick_message("Settings Saved!", no_titlebar=True, keep_on_top=True,
+                                   auto_close_duration=2, background_color='green', text_color='white')
+            win.close()
+            break
+        elif event == '-SLIDER-':
+            win['-UPDATE_CHECK-'].update(f"Check for Updates every {values['-SLIDER-']} minute(s)")
+        elif event == '-SLIDER2-':
+            win['-BACKUP_CHECK-'].update(f"Backup save every {values['-SLIDER2-']} minute(s)")
+        elif event == sg.WINDOW_CLOSED or event == '-CANCEL-':
+            win.close()
+            break
+
+
 def main():
     global server_status
     global update_time
+    global latest_update
     test = Update()
     test2 = Status()
+    test3 = Backup()
     install = [
+        [
+            sg.Button("Manager Settings", key='-MSETTINGS-', enable_events=True)
+        ],
         [
             sg.In(default_text=get_saved_location(), size=(25, 1), enable_events=True, key="-FOLDER-", disabled=True),
             sg.FolderBrowse(initial_folder=get_saved_location())
@@ -175,6 +298,10 @@ def main():
         [
             sg.Text("Next update Check:"),
             sg.Text("---", key='-NEXT_UPDATE_TIME-')
+        ],
+        [
+            sg.Text("Last Update:"),
+            sg.Text("---", key='-LATEST_UPDATE-')
         ],
         [
             sg.HSeperator()
@@ -233,7 +360,7 @@ def main():
             sg.Column(edit_values)
         ]
     ]
-    window = sg.Window("MoE Setting Manager", layout, icon='Images\moe.ico')
+    window = sg.Window("MoE Server Manager", layout, icon='Images\moe.ico')
     cur_selection = None
     cur_key = None
     folder = None
@@ -389,6 +516,8 @@ def main():
             subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Start'])
         elif event == '-SHUTDOWN_SERVER-':
             subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Shutdown'])
+        elif event == '-MSETTINGS-':
+            manager_settings_window()
         elif event == '-REFRESH-':
             if server_status == "":
                 window['-STATUS-'].update('Offline ❌')
@@ -403,8 +532,13 @@ def main():
                 ntime = next_time.strftime('%m/%d at %I:%M%p')
             except TypeError:
                 ntime = '---'
+            try:
+                last_update = latest_update.strftime('%m/%d at %I:%M%p')
+            except AttributeError:
+                last_update = '---'
             window['-UPDATE_TIME-'].update(str(utime))
             window['-NEXT_UPDATE_TIME-'].update(str(ntime))
+            window['-LATEST_UPDATE-'].update(str(last_update))
             window.refresh()
             continue
         elif event is None:
