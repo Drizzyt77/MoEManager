@@ -6,7 +6,10 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timedelta
+
 import psutil
+import pytz as pytz
 
 from rcon import Client
 from steam.client import SteamClient
@@ -16,6 +19,7 @@ import PySimpleGUIQt as sg
 file_addition = r'/WindowsPrivateServer/MOE/Saved/Config/WindowsServer/GameUserSettings.ini'
 
 server_status = ""
+update_time = None
 
 
 class Status(object):
@@ -43,6 +47,7 @@ class Update(object):
         thread.start()
 
     def check_for_updates(self):
+        global update_time
         while True:
             with open("appcfg.json", "r") as f:
                 data = json.loads(f.read())
@@ -53,11 +58,20 @@ class Update(object):
             x = info['apps'][1371580]['depots']['branches']['public']['buildid']
             if buildid != x:
                 subprocess.Popen(["powershell.exe", "./MoEServerControl.ps1", "-option", "Shutdown"])
-                time.sleep(60)
+                time.sleep(30)
+                with open("appcfg.json", "r") as f:
+                    data = json.loads(f.read())
+                folder = data["install"]
+                with open(folder + file_addition, "w") as f:
+                    config = configparser.ConfigParser()
+                    config.read("tmpcfg.ini")
+                    config.write(f)
+                time.sleep(30)
                 subprocess.Popen(["powershell.exe", "./MoEServerControl.ps1", "-option", "Start"])
                 with open("appcfg.json", "w") as f:
                     data["buildid"] = str(x)
                     json.dump(data, f, indent=2)
+            update_time = datetime.now(pytz.timezone("America/Chicago"))
             time.sleep(60 * self.interval)
 
 
@@ -139,7 +153,7 @@ def refresh_players():
 
 def main():
     global server_status
-    # TODO UNCOMMENT THIS
+    global update_time
     test = Update()
     test2 = Status()
     install = [
@@ -153,6 +167,14 @@ def main():
         [
             sg.Text("Server Status:"),
             sg.Text("Offline", key="-STATUS-")
+        ],
+        [
+            sg.Text("Latest update Check:"),
+            sg.Text("---", key='-UPDATE_TIME-')
+        ],
+        [
+            sg.Text("Next update Check:"),
+            sg.Text("---", key='-NEXT_UPDATE_TIME-')
         ],
         [
             sg.HSeperator()
@@ -357,7 +379,14 @@ def main():
 
             subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Start'])
         elif event == '-REBOOT_SERVER-':
-            subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Reboot'])
+            subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Shutdown'])
+            time.sleep(15)
+            with open(folder + file_addition, "w") as f:
+                config = configparser.ConfigParser()
+                config.read("tmpcfg.ini")
+                config.write(f)
+            time.sleep(15)
+            subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Start'])
         elif event == '-SHUTDOWN_SERVER-':
             subprocess.Popen(['powershell.exe', './MoEServerControl.ps1', '-option', 'Shutdown'])
         elif event == '-REFRESH-':
@@ -365,6 +394,17 @@ def main():
                 window['-STATUS-'].update('Offline ❌')
             else:
                 window['-STATUS-'].update('Online ✅')
+            try:
+                utime = update_time.strftime('%m/%d at %I:%M%p')
+            except AttributeError:
+                utime = '---'
+            try:
+                next_time = update_time + timedelta(minutes=30)
+                ntime = next_time.strftime('%m/%d at %I:%M%p')
+            except TypeError:
+                ntime = '---'
+            window['-UPDATE_TIME-'].update(str(utime))
+            window['-NEXT_UPDATE_TIME-'].update(str(ntime))
             window.refresh()
             continue
         elif event is None:
