@@ -64,7 +64,8 @@ class Backup(object):
             if os.path.exists(os.path.join(self.install_dir, '/WindowsPrivateServer/MOE/Saved/SaveGames/')):
                 num = len(os.listdir(self.install_dir + '/WindowsPrivateServer/MOE/Saved/SaveGames/'))
                 shutil.make_archive('MoEBackup-' + str(num) + '-'+str(datetime.now(pytz.timezone("America/Chicago"))),
-                                    'zip', os.path.join(self.install_dir, '/WindowsPrivateServer/MOE/Saved/SaveGames/'))
+                                    'zip', os.path.join(self.install_dir, '/WindowsPrivateServer/MOE/Saved/SaveGames/'),
+                                    os.path.join(self.install_dir, '/Backups'))
             time.sleep(self.interval)
 
 
