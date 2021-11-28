@@ -21,7 +21,7 @@ file_addition = r'/WindowsPrivateServer/MOE/Saved/Config/WindowsServer/GameUserS
 server_status = ""
 update_time = None
 latest_update = None
-last_backup = None
+latest_backup = None
 
 
 class Status(object):
@@ -54,19 +54,26 @@ class Backup(object):
             return
         self.interval = backuptime
         self.install_dir = install_dir
+        print(self.interval)
+        print(os.path.join(self.install_dir, '/WindowsPrivateServer/MOE/Saved/SaveGames/'))
         thread = threading.Thread(target=self.do_backup, args=())
         thread.daemon = True
         thread.start()
 
     def do_backup(self):
-        global last_backup
+        global latest_backup
         while True:
-            if os.path.exists(os.path.join(self.install_dir, '/WindowsPrivateServer/MOE/Saved/SaveGames/')):
-                num = len(os.listdir(self.install_dir + '/WindowsPrivateServer/MOE/Saved/SaveGames/'))
-                shutil.make_archive('MoEBackup-' + str(num) + '-'+str(datetime.now(pytz.timezone("America/Chicago"))),
-                                    'zip', os.path.join(self.install_dir, '/WindowsPrivateServer/MOE/Saved/SaveGames/'),
-                                    os.path.join(self.install_dir, '/Backups'))
-            time.sleep(self.interval)
+            if not os.path.exists(self.install_dir + '/Backups'):
+                os.mkdir(self.install_dir + '/Backups')
+            if os.path.exists(self.install_dir + '/WindowsPrivateServer/MOE/Saved/SaveGames'):
+                print("Backup install dir: ", self.install_dir)
+                nowtime = datetime.now(pytz.timezone("America/Chicago"))
+                btime = nowtime.strftime('%H%M_%d-%m-%y')
+                shutil.make_archive(f'./Backups/MoEBackup-{btime}',
+                                    'zip', './WindowsPrivateServer/MOE/Saved/SaveGames')
+                os.chdir(self.install_dir)
+                latest_backup = nowtime
+            time.sleep(60 * self.interval)
 
 
 class Update(object):
@@ -274,9 +281,11 @@ def main():
     global server_status
     global update_time
     global latest_update
+    global latest_backup
     test = Update()
     test2 = Status()
     test3 = Backup()
+    time.sleep(5)
     install = [
         [
             sg.Button("Manager Settings", key='-MSETTINGS-', enable_events=True)
@@ -303,6 +312,10 @@ def main():
         [
             sg.Text("Last Update:"),
             sg.Text("---", key='-LATEST_UPDATE-')
+        ],
+        [
+            sg.Text("Last Backup:"),
+            sg.Text("---", key='-LATEST_BACKUP-')
         ],
         [
             sg.HSeperator()
@@ -366,11 +379,9 @@ def main():
     cur_key = None
     folder = None
     data = get_config()
-    try:
-        install_location = data['install']
-    except KeyError:
-        install_location = os.curdir
+    install_location = data['install']
     folder = install_location
+    print(install_location)
     shutil.copy(install_location + file_addition, "./tmpcfg.ini")
     while True:
         event, values = window.read(timeout=1000, timeout_key='-REFRESH-')
@@ -537,9 +548,14 @@ def main():
                 last_update = latest_update.strftime('%m/%d at %I:%M%p')
             except AttributeError:
                 last_update = '---'
+            try:
+                last_backup = latest_backup.strftime('%m/%d at %I:%M%p')
+            except AttributeError:
+                last_backup = '---'
             window['-UPDATE_TIME-'].update(str(utime))
             window['-NEXT_UPDATE_TIME-'].update(str(ntime))
             window['-LATEST_UPDATE-'].update(str(last_update))
+            window['-LATEST_BACKUP-'].update(str(last_backup))
             window.refresh()
             continue
         elif event is None:
